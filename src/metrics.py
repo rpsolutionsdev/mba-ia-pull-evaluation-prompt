@@ -24,12 +24,28 @@ Configure o provider no arquivo .env através da variável LLM_PROVIDER.
 import os
 import json
 import re
+import time
 from typing import Dict, Any
 from dotenv import load_dotenv
 from langchain_core.messages import SystemMessage, HumanMessage
 from utils import get_eval_llm
 
 load_dotenv()
+
+
+def safe_invoke_llm(llm, messages, max_retries=5):
+    for attempt in range(max_retries):
+        try:
+            return llm.invoke(messages)
+        except Exception as e:
+            err_str = str(e).lower()
+            if ("429" in err_str or "quota" in err_str or "rate" in err_str or "resourceexhausted" in err_str or "too many requests" in err_str) and attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 6
+                print(f"      ⚠️ Rate limit (429) atingido. Aguardando {wait_time}s para tentar novamente...")
+                time.sleep(wait_time)
+            else:
+                raise e
+
 
 
 def get_evaluator_llm():
@@ -128,7 +144,7 @@ NÃO adicione nenhum texto antes ou depois do JSON.
 
     try:
         llm = get_evaluator_llm()
-        response = llm.invoke([HumanMessage(content=evaluator_prompt)])
+        response = safe_invoke_llm(llm, [HumanMessage(content=evaluator_prompt)])
         result = extract_json_from_response(response.content)
 
         precision = float(result.get("precision", 0.0))
@@ -225,7 +241,7 @@ NÃO adicione nenhum texto antes ou depois do JSON.
 
     try:
         llm = get_evaluator_llm()
-        response = llm.invoke([HumanMessage(content=evaluator_prompt)])
+        response = safe_invoke_llm(llm, [HumanMessage(content=evaluator_prompt)])
         result = extract_json_from_response(response.content)
 
         score = float(result.get("score", 0.0))
@@ -312,7 +328,7 @@ NÃO adicione nenhum texto antes ou depois do JSON.
 
     try:
         llm = get_evaluator_llm()
-        response = llm.invoke([HumanMessage(content=evaluator_prompt)])
+        response = safe_invoke_llm(llm, [HumanMessage(content=evaluator_prompt)])
         result = extract_json_from_response(response.content)
 
         score = float(result.get("score", 0.0))

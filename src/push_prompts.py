@@ -41,7 +41,7 @@ def validate_prompt(prompt_data: dict) -> tuple[bool, list]:
 
 def push_prompt_to_langsmith(prompt_name: str, prompt_data: dict) -> bool:
     """
-    Faz push do prompt otimizado para o LangSmith Hub (PÚBLICO).
+    Faz push do prompt otimizado para o LangSmith Hub.
 
     Args:
         prompt_name: Nome do prompt (ex: bug_to_user_story_v2)
@@ -70,6 +70,7 @@ def push_prompt_to_langsmith(prompt_name: str, prompt_data: dict) -> bool:
 
     print(f"Fazendo push do prompt para LangSmith Hub: '{hub_prompt_handle}'...")
 
+    # Tentativa 1: Push público com o handle completo {username}/{prompt_name}
     try:
         url = hub.push(
             hub_prompt_handle,
@@ -83,8 +84,44 @@ def push_prompt_to_langsmith(prompt_name: str, prompt_data: dict) -> bool:
         print(f"   URL/Ref: {url}")
         return True
     except Exception as e:
-        print(f"[ERRO] Falha ao fazer push para o LangSmith Hub: {e}")
-        return False
+        error_msg = str(e)
+        if "Nothing to commit" in error_msg:
+            print(f"[OK] O prompt já está atualizado no LangSmith Hub (sem alterações).")
+            print(f"   Handle do Hub: {hub_prompt_handle}")
+            return True
+
+        # Tentativa 2: Push no workspace do usuário
+        print(f"   Tentando push no seu workspace no LangSmith...")
+        try:
+            url = hub.push(
+                prompt_name,
+                prompt_template,
+                new_repo_description=description,
+                tags=tags
+            )
+            print(f"[OK] Push realizado com sucesso no seu workspace!")
+            print(f"   URL/Ref: {url}")
+            return True
+        except Exception as e2:
+            error_msg2 = str(e2)
+            if "Nothing to commit" in error_msg2:
+                print(f"[OK] O prompt já está publicado e atualizado no seu workspace no LangSmith!")
+                return True
+
+            print(f"[ERRO] Falha ao fazer push para o LangSmith Hub: {e}")
+
+            if "LangChain Hub handle" in error_msg:
+                print("\n" + "=" * 70)
+                print("⚠️  AÇÃO NECESSÁRIA NO LANGSMITH:")
+                print("=" * 70)
+                print("O LangSmith exige a ativação inicial do seu Handle público antes do primeiro push.\n")
+                print("Siga os passos abaixo (leva menos de 1 minuto):")
+                print("1. Acesse: https://smith.langchain.com/prompts")
+                print("2. Clique no botão '+' (New Prompt) no canto superior direito.")
+                print(f"3. Confirme seu handle como '{username}' e salve qualquer prompt inicial de teste.")
+                print("\nApós salvar uma vez no site, rode novamente: python src/push_prompts.py")
+                print("=" * 70 + "\n")
+            return False
 
 
 def main():

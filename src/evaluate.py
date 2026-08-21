@@ -29,6 +29,12 @@ from langchain_core.prompts import ChatPromptTemplate
 from utils import check_env_vars, format_score, print_section_header, get_llm as get_configured_llm
 from metrics import evaluate_f1_score, evaluate_clarity, evaluate_precision
 
+# Garantir UTF-8 no stdout/stderr no Windows
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8')
+
 load_dotenv()
 
 
@@ -110,6 +116,16 @@ def pull_prompt_from_langsmith(prompt_name: str) -> ChatPromptTemplate:
         return prompt
 
     except Exception as e:
+        if "/" in prompt_name:
+            fallback_name = prompt_name.split("/")[-1]
+            try:
+                print(f"   Tentando puxar prompt do seu workspace: {fallback_name}...")
+                prompt = hub.pull(fallback_name)
+                print(f"   ✓ Prompt carregado com sucesso do seu workspace ({fallback_name})")
+                return prompt
+            except Exception:
+                pass
+
         error_msg = str(e).lower()
 
         print(f"\n{'=' * 70}")
