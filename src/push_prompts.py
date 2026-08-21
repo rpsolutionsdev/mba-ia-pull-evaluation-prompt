@@ -15,28 +15,20 @@ import sys
 from dotenv import load_dotenv
 from langchain import hub
 from langchain_core.prompts import ChatPromptTemplate
-from utils import load_yaml, check_env_vars, print_section_header
+from utils import load_yaml, check_env_vars, print_section_header, validate_prompt_structure
+
+# Garantir UTF-8 no stdout/stderr no Windows
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8')
 
 load_dotenv()
 
 
-def push_prompt_to_langsmith(prompt_name: str, prompt_data: dict) -> bool:
-    """
-    Faz push do prompt otimizado para o LangSmith Hub (PÚBLICO).
-
-    Args:
-        prompt_name: Nome do prompt
-        prompt_data: Dados do prompt
-
-    Returns:
-        True se sucesso, False caso contrário
-    """
-    ...
-
-
 def validate_prompt(prompt_data: dict) -> tuple[bool, list]:
     """
-    Valida estrutura básica de um prompt (versão simplificada).
+    Valida estrutura básica de um prompt.
 
     Args:
         prompt_data: Dados do prompt
@@ -44,12 +36,92 @@ def validate_prompt(prompt_data: dict) -> tuple[bool, list]:
     Returns:
         (is_valid, errors) - Tupla com status e lista de erros
     """
-    ...
+    return validate_prompt_structure(prompt_data)
+
+
+def push_prompt_to_langsmith(prompt_name: str, prompt_data: dict) -> bool:
+    """
+    Faz push do prompt otimizado para o LangSmith Hub (PÚBLICO).
+
+    Args:
+        prompt_name: Nome do prompt (ex: bug_to_user_story_v2)
+        prompt_data: Dados do prompt do YAML
+
+    Returns:
+        True se sucesso, False caso contrário
+    """
+    username = os.getenv("USERNAME_LANGSMITH_HUB")
+    if not username:
+        print("[ERRO] USERNAME_LANGSMITH_HUB não configurada no .env")
+        return False
+
+    hub_prompt_handle = f"{username}/{prompt_name}"
+
+    system_prompt = prompt_data.get("system_prompt", "")
+    user_prompt = prompt_data.get("user_prompt", "{bug_report}")
+
+    prompt_template = ChatPromptTemplate.from_messages([
+        ("system", system_prompt),
+        ("human", user_prompt)
+    ])
+
+    description = prompt_data.get("description", "Prompt v2 otimizado para converter relatos de bugs em User Stories")
+    tags = prompt_data.get("tags", ["bug-analysis", "user-story"])
+
+    print(f"Fazendo push do prompt para LangSmith Hub: '{hub_prompt_handle}'...")
+
+    try:
+        url = hub.push(
+            hub_prompt_handle,
+            prompt_template,
+            new_repo_is_public=True,
+            new_repo_description=description,
+            tags=tags
+        )
+        print(f"[OK] Push realizado com sucesso!")
+        print(f"   Handle do Hub: {hub_prompt_handle}")
+        print(f"   URL/Ref: {url}")
+        return True
+    except Exception as e:
+        print(f"[ERRO] Falha ao fazer push para o LangSmith Hub: {e}")
+        return False
 
 
 def main():
     """Função principal"""
-    ...
+    print_section_header("PUSH DE PROMPTS OTIMIZADOS AO LANGSMITH HUB")
+
+    required_vars = ["LANGSMITH_API_KEY", "USERNAME_LANGSMITH_HUB"]
+    if not check_env_vars(required_vars):
+        return 1
+
+    v2_path = "prompts/bug_to_user_story_v2.yml"
+    print(f"Carregando prompt otimizado de '{v2_path}'...")
+
+    yaml_data = load_yaml(v2_path)
+    if not yaml_data:
+        print(f"[ERRO] Não foi possível carregar o arquivo '{v2_path}'")
+        return 1
+
+    prompt_key = "bug_to_user_story_v2"
+    if prompt_key not in yaml_data:
+        print(f"[ERRO] Chave '{prompt_key}' não encontrada no arquivo '{v2_path}'")
+        return 1
+
+    prompt_data = yaml_data[prompt_key]
+
+    print("Validando estrutura do prompt...")
+    is_valid, errors = validate_prompt(prompt_data)
+    if not is_valid:
+        print("[ERRO] Validação do prompt falhou:")
+        for err in errors:
+            print(f"   - {err}")
+        return 1
+
+    print("[OK] Prompt validado com sucesso!")
+
+    success = push_prompt_to_langsmith(prompt_key, prompt_data)
+    return 0 if success else 1
 
 
 if __name__ == "__main__":
