@@ -33,18 +33,19 @@ from utils import get_eval_llm
 load_dotenv()
 
 
-def safe_invoke_llm(llm, messages, max_retries=5):
+def safe_invoke_llm(llm, messages, max_retries=10):
     for attempt in range(max_retries):
         try:
             return llm.invoke(messages)
         except Exception as e:
             err_str = str(e).lower()
-            if ("429" in err_str or "quota" in err_str or "rate" in err_str or "resourceexhausted" in err_str or "too many requests" in err_str) and attempt < max_retries - 1:
-                wait_time = (attempt + 1) * 6
-                print(f"      ⚠️ Rate limit (429) atingido. Aguardando {wait_time}s para tentar novamente...")
+            if ("429" in err_str or "quota" in err_str or "rate" in err_str or "resourceexhausted" in err_str or "too many requests" in err_str or "10054" in err_str or "connection" in err_str) and attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 8 + 5
+                print(f"      ⚠️ Rate limit/Quota atingido no avaliador. Aguardando {wait_time}s para tentar novamente...")
                 time.sleep(wait_time)
             else:
                 raise e
+
 
 
 

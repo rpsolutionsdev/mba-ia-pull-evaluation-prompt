@@ -156,42 +156,57 @@ def pull_prompt_from_langsmith(prompt_name: str) -> ChatPromptTemplate:
         raise
 
 
+import time
+
 def evaluate_prompt_on_example(
     prompt_template: ChatPromptTemplate,
     example: Any,
-    llm: Any
+    llm: Any,
+    max_retries: int = 10
 ) -> Dict[str, Any]:
-    try:
-        inputs = example.inputs if hasattr(example, 'inputs') else {}
-        outputs = example.outputs if hasattr(example, 'outputs') else {}
+    inputs = example.inputs if hasattr(example, 'inputs') else {}
+    outputs = example.outputs if hasattr(example, 'outputs') else {}
 
-        chain = prompt_template | llm
+    reference = outputs.get("reference", "") if isinstance(outputs, dict) else ""
 
-        response = chain.invoke(inputs)
-        answer = response.content
+    if isinstance(inputs, dict):
+        question = inputs.get("question", inputs.get("bug_report", inputs.get("pr_title", "N/A")))
+    else:
+        question = "N/A"
 
-        reference = outputs.get("reference", "") if isinstance(outputs, dict) else ""
+    chain = prompt_template | llm
 
-        if isinstance(inputs, dict):
-            question = inputs.get("question", inputs.get("bug_report", inputs.get("pr_title", "N/A")))
-        else:
-            question = "N/A"
+    for attempt in range(max_retries):
+        try:
+            response = chain.invoke(inputs)
+            answer = response.content
 
-        return {
-            "answer": answer,
-            "reference": reference,
-            "question": question
-        }
+            return {
+                "answer": answer,
+                "reference": reference,
+                "question": question
+            }
 
-    except Exception as e:
-        print(f"      ⚠️  Erro ao avaliar exemplo: {e}")
-        import traceback
-        print(f"      Traceback: {traceback.format_exc()}")
-        return {
-            "answer": "",
-            "reference": "",
-            "question": ""
-        }
+        except Exception as e:
+            err_str = str(e).lower()
+            if ("429" in err_str or "quota" in err_str or "rate" in err_str or "resourceexhausted" in err_str or "too many requests" in err_str or "10054" in err_str or "connection" in err_str) and attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 8 + 5
+                print(f"      ⚠️ Rate limit / Quota no chain.invoke. Aguardando {wait_time}s para tentar novamente...")
+                time.sleep(wait_time)
+            else:
+                print(f"      ⚠️  Erro ao avaliar exemplo: {e}")
+                import traceback
+                print(f"      Traceback: {traceback.format_exc()}")
+                return {
+                    "answer": "",
+                    "reference": "",
+                    "question": ""
+                }
+    return {
+        "answer": "",
+        "reference": "",
+        "question": ""
+    }
 
 
 def evaluate_prompt(
@@ -219,9 +234,13 @@ def evaluate_prompt(
             result = evaluate_prompt_on_example(prompt_template, example, llm)
 
             if result["answer"]:
+                time.sleep(1.5)
                 f1 = evaluate_f1_score(result["question"], result["answer"], result["reference"])
+                time.sleep(1.5)
                 clarity = evaluate_clarity(result["question"], result["answer"], result["reference"])
+                time.sleep(1.5)
                 precision = evaluate_precision(result["question"], result["answer"], result["reference"])
+                time.sleep(1.5)
 
                 f1_scores.append(f1["score"])
                 clarity_scores.append(clarity["score"])
