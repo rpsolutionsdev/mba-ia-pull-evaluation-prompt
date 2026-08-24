@@ -25,9 +25,10 @@ venv/
 env/
 ENV/
 
-# Environment variables
+# Environment variables (Privado - Não commitado no Git)
 .env
 .env.local
+.env.*.local
 
 # IDE
 .vscode/
@@ -45,6 +46,5 @@ ENV/
 *.log
 
 # Project specific
-screenshots/
 results/
 .claude/
